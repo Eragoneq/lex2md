@@ -36,6 +36,7 @@ def generate_markdown(
         for section in parsed.annexes
         if section.id and section.anchor
     }
+    link_ctx = _LinkContext(article_links, annex_links, config)
 
     parts: list[str] = []
 
@@ -56,7 +57,11 @@ def generate_markdown(
     if parsed.preamble:
         parts.append("## Preamble")
         parts.append("")
-        parts.append(_apply_intra_links(parsed.preamble, article_links, annex_links, config))
+        preamble_text = parsed.preamble
+        if config.add_block_links:
+            preamble_text = _namespace_footnote_refs(preamble_text)
+        preamble_text = _apply_intra_links(preamble_text, article_links, annex_links, config)
+        parts.append(preamble_text)
         notes = _format_notes(parsed.preamble_notes, config)
         if notes:
             parts.append("")
@@ -89,7 +94,7 @@ def generate_markdown(
                 parts.append("")
                 current_section = section
 
-            parts.extend(_render_section(article, heading_level=article_heading_level, config=config))
+            parts.extend(_render_section(article, heading_level=article_heading_level, config=config, link_ctx=link_ctx))
 
     if parsed.final_text or parsed.signature_lines:
         parts.append("## Final Provisions")
@@ -106,23 +111,35 @@ def generate_markdown(
         parts.append("## Annexes")
         parts.append("")
         for annex in parsed.annexes:
-            parts.extend(_render_section(annex, heading_level=3, config=config))
+            parts.extend(_render_section(annex, heading_level=3, config=config, link_ctx=link_ctx))
 
     return "\n".join(parts).strip()
 
 
-def _render_section(section: Section, *, heading_level: int, config: RenderConfig) -> list[str]:
+@dataclass
+class _LinkContext:
+    """Carries article/annex anchor lookups through the render pipeline."""
+    article_links: dict[str, str]
+    annex_links: dict[str, str]
+    config: RenderConfig
+
+
+def _render_section(
+    section: Section,
+    *,
+    heading_level: int,
+    config: RenderConfig,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     level = "#" * heading_level
     header = _section_header(section)
 
     # Headings never get block links — Obsidian natively references headings.
     header_line = f"{level} {header}"
     lines = [header_line]
-    if section.anchor:
-        lines.append(f'<a id="{section.anchor}"></a>')
     lines.append("")
 
-    section_content = _render_section_content(section, config)
+    section_content = _render_section_content(section, config, link_ctx)
     if section_content:
         lines.extend(section_content)
 
@@ -166,19 +183,30 @@ def _format_notes(notes: list[Note], config: RenderConfig) -> str:
     return "\n".join(lines)
 
 
-def _render_section_content(section: Section, config: RenderConfig) -> list[str]:
+def _render_section_content(
+    section: Section, config: RenderConfig, link_ctx: _LinkContext | None = None
+) -> list[str]:
     base_id = section.anchor or "section"
     if section.paragraphs:
-        return _render_paragraphs(section.paragraphs, base_id, config)
+        return _render_paragraphs(section.paragraphs, base_id, config, link_ctx)
     if section.body:
         body = section.body
         if config.add_block_links:
             body = _namespace_footnote_refs(body)
+        if link_ctx:
+            body = _apply_intra_links(
+                body, link_ctx.article_links, link_ctx.annex_links, link_ctx.config
+            )
         return [body]
     return []
 
 
-def _render_paragraphs(paragraphs: list[Paragraph], base_id: str, config: RenderConfig) -> list[str]:
+def _render_paragraphs(
+    paragraphs: list[Paragraph],
+    base_id: str,
+    config: RenderConfig,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     lines: list[str] = []
     total = len(paragraphs)
     for index, paragraph in enumerate(paragraphs):
@@ -186,6 +214,10 @@ def _render_paragraphs(paragraphs: list[Paragraph], base_id: str, config: Render
         text = paragraph.text.strip()
         if config.add_block_links:
             text = _namespace_footnote_refs(text)
+        if link_ctx:
+            text = _apply_intra_links(
+                text, link_ctx.article_links, link_ctx.annex_links, link_ctx.config
+            )
 
         p_idx = paragraph.number.lower() if paragraph.number else f"p{index}"
         block_id = f"{base_id}-{p_idx}"
@@ -383,6 +415,11 @@ def _coerce_document(document: EurLexDocument | dict) -> EurLexDocument:
 
 
 def _build_navigation(document: EurLexDocument, config: RenderConfig) -> list[str]:
+    # Navigation only makes sense with wikilinks — standard markdown anchor links
+    # require <a id="..."> tags which we no longer emit.
+    if config.links_style != "wikilinks":
+        return []
+
     lines: list[str] = []
     entries: list[tuple[str, str]] = []
 
@@ -399,10 +436,7 @@ def _build_navigation(document: EurLexDocument, config: RenderConfig) -> list[st
     lines.append("## Navigation")
     lines.append("")
     for label, anchor in entries:
-        if config.links_style == "wikilinks":
-            lines.append(f"- [[#{anchor}|{label}]]")
-        else:
-            lines.append(f"- [{label}](#{anchor})")
+        lines.append(f"- [[#{anchor}|{label}]]")
     return lines
 
 

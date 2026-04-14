@@ -128,10 +128,10 @@ class TestBlockLinks:
         result = generate_markdown(doc, add_block_links=True)
         assert "^article-3-1-b-i" in result
 
-    def test_anchor_tag_still_present_when_block_links_active(self) -> None:
+    def test_no_html_anchors_emitted(self) -> None:
         doc = _make_doc(articles=[_article("1", body="Body.")])
         result = generate_markdown(doc, add_block_links=True)
-        assert '<a id="article-1"></a>' in result
+        assert '<a id="article-1"></a>' not in result
 
 
 # ===================================================================
@@ -197,10 +197,10 @@ class TestWikilinks:
         result = generate_markdown(doc, links_style="wikilinks")
         assert "[[#article-1|Article 1 - Subject]]" in result
 
-    def test_navigation_uses_markdown_by_default(self) -> None:
+    def test_no_navigation_in_standard_markdown(self) -> None:
         doc = _make_doc(articles=[_article("1", "Subject", body="Body.")])
         result = generate_markdown(doc)
-        assert "[Article 1 - Subject](#article-1)" in result
+        assert "## Navigation" not in result
 
     def test_preamble_intra_links_use_wikilinks(self) -> None:
         doc = _make_doc(
@@ -316,6 +316,21 @@ class TestSemanticLinkResolution:
             doc, resolve_semantic_links=True, add_block_links=True,
         )
         assert "[Article 3 paragraph 5, point (a)](#^article-3-5-a)" in result
+
+    def test_article_paragraph_point_style_wikilinks(self) -> None:
+        """'Article 3 paragraph 5, point (a)' → block link, including inside article bodies."""
+        doc = _make_doc(
+            articles=[
+                _article("3", body="Body. Article 6 paragraph 2, point (b)."),
+                _article("6", body="Body of Article 6."),
+            ],
+            preamble="Refer to Article 3 paragraph 5, point (a).",
+        )
+        result = generate_markdown(
+            doc, resolve_semantic_links=True, add_block_links=True, links_style="wikilinks",
+        )
+        assert "[[#^article-3-5-a|Article 3 paragraph 5, point (a)]]" in result
+        assert "[[#^article-6-2-b|Article 6 paragraph 2, point (b)]]" in result
 
     def test_article_paragraph_only(self) -> None:
         """'Article 3 paragraph 5' → block link with paragraph only."""

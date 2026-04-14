@@ -31,14 +31,12 @@ def test_generate_markdown_with_notes_and_navigation() -> None:
 
     assert "# REGULATION 123" in result
     assert "- CELEX: `32024R0111`" in result
-    assert "## Navigation" in result
+    # Navigation is only generated for wikilinks mode
+    assert "## Navigation" not in result
     assert "### CHAPTER I - GENERAL" in result
-    assert "- [Article 1 - Subject](#article-1)" in result
-    assert "- [ANNEX I - List](#annex-i)" in result
     assert "See [Article 1](#article-1) and [ANNEX I](#annex-i) with [^1]." in result
     assert "[^1]: Note 1 text" in result
     assert "[^2]: Note 2 text" in result
-    assert '<a id="article-1"></a>' in result
 
 
 def test_generate_markdown_accepts_dict() -> None:
@@ -66,7 +64,8 @@ def test_generate_markdown_accepts_dict() -> None:
     assert "Some preamble text with [^1]." in result
     assert "### CHAPTER I - GENERAL" in result
     assert "[^1]: Note 1 text" in result
-    assert "Body of Article 1 with [^2]." in result
+    # Article body now gets intra-linked since Article 1 is a known section
+    assert "[Article 1](#article-1)" in result
     assert "[^2]: Note 2 text" in result
 
 
