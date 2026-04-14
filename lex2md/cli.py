@@ -34,8 +34,34 @@ def main() -> None:
         "--local",
         help="Path to local HTML file to parse (bypasses fetching).",
     )
+    parser.add_argument(
+        "--obsidian",
+        action="store_true",
+        help="Shorthand for --links wikilinks --block-links --resolve-links.",
+    )
+    parser.add_argument(
+        "--links",
+        choices=["markdown", "wikilinks"],
+        default="markdown",
+        help="Style for internal cross-references.",
+    )
+    parser.add_argument(
+        "--block-links",
+        action="store_true",
+        help="Add Obsidian-compatible Block IDs (^id) to all paragraphs and points.",
+    )
+    parser.add_argument(
+        "--resolve-links",
+        action="store_true",
+        help="Post-process text to convert semantic citations (e.g. 'Article 3(1)(a)') into internal links.",
+    )
 
     args = parser.parse_args()
+
+    if args.obsidian:
+        args.links = "wikilinks"
+        args.block_links = True
+        args.resolve_links = True
 
     log_level = logging.ERROR if args.json else logging.INFO
     logging.basicConfig(level=log_level, format="%(message)s", stream=sys.stderr)
@@ -56,7 +82,12 @@ def main() -> None:
             print(json.dumps(document_to_dict(document), indent=2, ensure_ascii=True))
             return
 
-        markdown = generate_markdown(document)
+        markdown = generate_markdown(
+            document,
+            links_style=args.links,
+            add_block_links=args.block_links,
+            resolve_semantic_links=args.resolve_links,
+        )
         output_path = args.output or f"{args.celex}.md"
         with open(output_path, "w", encoding="utf-8") as handle:
             handle.write(markdown)

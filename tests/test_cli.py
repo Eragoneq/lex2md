@@ -65,7 +65,7 @@ def test_cli_local_mode(mocker, mock_fetch, mock_parse, mock_markdown):
     main()
 
     mock_fetch.assert_not_called()
-    m_open.assert_any_call("dummy.html", "r", encoding="utf-8")
+    m_open.assert_any_call("dummy.html", encoding="utf-8")
 
 
 def test_cli_handles_fetch_error(mocker, mock_fetch):

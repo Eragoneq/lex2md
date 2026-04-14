@@ -1,11 +1,30 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from .models import EurLexDocument, Note, Paragraph, Point, Recital, Section
+from lex2md.models import EurLexDocument, Note, Paragraph, Point, Recital, Section
 
 
-def generate_markdown(document: EurLexDocument | dict) -> str:
+@dataclass
+class RenderConfig:
+    links_style: str = "markdown"
+    add_block_links: bool = False
+    resolve_semantic_links: bool = False
+
+
+def generate_markdown(
+    document: EurLexDocument | dict,
+    *,
+    links_style: str = "markdown",
+    add_block_links: bool = False,
+    resolve_semantic_links: bool = False,
+) -> str:
+    config = RenderConfig(
+        links_style=links_style,
+        add_block_links=add_block_links,
+        resolve_semantic_links=resolve_semantic_links,
+    )
     parsed = _coerce_document(document)
     article_links = {
         section.id: section.anchor
@@ -29,7 +48,7 @@ def generate_markdown(document: EurLexDocument | dict) -> str:
         parts.append(f"- Language: `{parsed.language}`")
         parts.append("")
 
-    nav_lines = _build_navigation(parsed)
+    nav_lines = _build_navigation(parsed, config)
     if nav_lines:
         parts.extend(nav_lines)
         parts.append("")
@@ -37,7 +56,7 @@ def generate_markdown(document: EurLexDocument | dict) -> str:
     if parsed.preamble:
         parts.append("## Preamble")
         parts.append("")
-        parts.append(_apply_intra_links(parsed.preamble, article_links, annex_links))
+        parts.append(_apply_intra_links(parsed.preamble, article_links, annex_links, config))
         notes = _format_notes(parsed.preamble_notes)
         if notes:
             parts.append("")
@@ -48,15 +67,13 @@ def generate_markdown(document: EurLexDocument | dict) -> str:
         parts.append("## Articles")
         parts.append("")
         has_grouping = any(
-            article.chapter_id
-            or article.chapter_title
-            or article.section_id
-            or article.section_title
+            article.chapter_id or article.chapter_title or article.section_id or article.section_title
             for article in parsed.articles
         )
         article_heading_level = 4 if has_grouping else 3
         current_chapter: tuple[str, str] = ("", "")
         current_section: tuple[str, str] = ("", "")
+        
         for article in parsed.articles:
             chapter = (article.chapter_id, article.chapter_title)
             section = (article.section_id, article.section_title)
@@ -72,7 +89,7 @@ def generate_markdown(document: EurLexDocument | dict) -> str:
                 parts.append("")
                 current_section = section
 
-            parts.extend(_render_section(article, heading_level=article_heading_level))
+            parts.extend(_render_section(article, heading_level=article_heading_level, config=config))
 
     if parsed.final_text or parsed.signature_lines:
         parts.append("## Final Provisions")
@@ -89,20 +106,25 @@ def generate_markdown(document: EurLexDocument | dict) -> str:
         parts.append("## Annexes")
         parts.append("")
         for annex in parsed.annexes:
-            parts.extend(_render_section(annex, heading_level=3))
+            parts.extend(_render_section(annex, heading_level=3, config=config))
 
     return "\n".join(parts).strip()
 
 
-def _render_section(section: Section, *, heading_level: int) -> list[str]:
+def _render_section(section: Section, *, heading_level: int, config: RenderConfig) -> list[str]:
     level = "#" * heading_level
     header = _section_header(section)
-    lines = [f"{level} {header}"]
-    if section.anchor:
+    
+    header_line = f"{level} {header}"
+    if config.add_block_links and section.anchor:
+        header_line += f" ^{section.anchor}"
+        
+    lines = [header_line]
+    if section.anchor and not config.add_block_links:
         lines.append(f'<a id="{section.anchor}"></a>')
     lines.append("")
 
-    section_content = _render_section_content(section)
+    section_content = _render_section_content(section, config)
     if section_content:
         lines.extend(section_content)
 
@@ -120,9 +142,7 @@ def _section_header(section: Section) -> str:
     return " - ".join(parts) if parts else "Section"
 
 
-def _render_group_heading(
-    group_id: str, group_title: str, *, label: str, level: int
-) -> str:
+def _render_group_heading(group_id: str, group_title: str, *, label: str, level: int) -> str:
     heading = group_id.strip()
     title = group_title.strip()
     if heading and title:
@@ -141,70 +161,90 @@ def _format_notes(notes: list[Note]) -> str:
     return "\n".join(lines)
 
 
-def _render_section_content(section: Section) -> list[str]:
+def _render_section_content(section: Section, config: RenderConfig) -> list[str]:
+    base_id = section.anchor or "section"
     if section.paragraphs:
-        return _render_paragraphs(section.paragraphs)
+        return _render_paragraphs(section.paragraphs, base_id, config)
     if section.body:
         return [section.body]
     return []
 
 
-def _render_paragraphs(paragraphs: list[Paragraph]) -> list[str]:
+def _render_paragraphs(paragraphs: list[Paragraph], base_id: str, config: RenderConfig) -> list[str]:
     lines: list[str] = []
     total = len(paragraphs)
     for index, paragraph in enumerate(paragraphs):
         prefix = f"{paragraph.number}." if paragraph.number else ""
         text = paragraph.text.strip()
-        lines.append(f"{prefix} {text}".strip())
-        lines.extend(_render_paragraph_points(paragraph.points))
+        
+        p_idx = paragraph.number.lower() if paragraph.number else f"p{index}"
+        block_id = f"{base_id}-{p_idx}"
+        
+        main_line = f"{prefix} {text}".strip()
+        if config.add_block_links:
+            main_line += f" ^{block_id}"
+            
+        lines.append(main_line)
+        lines.extend(_render_paragraph_points(paragraph.points, block_id, config))
         if index + 1 < total:
             lines.append("")
     return lines
 
 
-def _render_paragraph_points(points: list[Point]) -> list[str]:
+def _render_paragraph_points(points: list[Point], parent_id: str, config: RenderConfig) -> list[str]:
     filtered = [point for point in points if point.text.strip()]
     if not filtered:
         return []
 
     lines: list[str] = []
-    for point in filtered:
-        lines.extend(_render_point_with_nested_dash_list(point, indent=3))
+    for index, point in enumerate(filtered):
+        marker_slug = re.sub(r'[^a-zA-Z0-9]', '', point.marker.lower()) if point.marker else f"pt{index}"
+        pt_id = f"{parent_id}-{marker_slug}"
+        lines.extend(_render_point_with_nested_dash_list(point, pt_id, config, indent=3))
     return lines
 
 
-def _render_point_with_nested_dash_list(point: Point, *, indent: int) -> list[str]:
+def _render_point_with_nested_dash_list(point: Point, block_id: str, config: RenderConfig, *, indent: int) -> list[str]:
     lead_text, nested_items = _split_inline_dash_items(point.text)
-    main_line = f"{' ' * indent}- {_format_point_text(point.marker, lead_text)}"
-    lines = [main_line.rstrip()]
+    
+    main_line = f"{' ' * indent}- {_format_point_text(point.marker, lead_text)}".rstrip()
+    if config.add_block_links:
+        main_line += f" ^{block_id}"
+    lines = [main_line]
 
     if point.subpoints:
-        lines.extend(_render_point_subpoints(point.subpoints, indent=indent + 3))
+        lines.extend(_render_point_subpoints(point.subpoints, block_id, config, indent=indent + 3))
 
-    lines.extend(_render_nested_dash_items(nested_items, indent=indent + 3))
+    lines.extend(_render_nested_dash_items(nested_items, block_id, config, indent=indent + 3))
     return lines
 
 
-def _render_point_subpoints(subpoints: list[Point], *, indent: int) -> list[str]:
+def _render_point_subpoints(subpoints: list[Point], parent_id: str, config: RenderConfig, *, indent: int) -> list[str]:
     lines: list[str] = []
-    for subpoint in subpoints:
-        lines.extend(_render_point_with_nested_dash_list(subpoint, indent=indent))
+    for index, subpoint in enumerate(subpoints):
+        marker_slug = re.sub(r'[^a-zA-Z0-9]', '', subpoint.marker.lower()) if subpoint.marker else f"spt{index}"
+        spt_id = f"{parent_id}-{marker_slug}"
+        lines.extend(_render_point_with_nested_dash_list(subpoint, spt_id, config, indent=indent))
     return lines
 
 
-def _render_nested_dash_items(items: list[str], *, indent: int) -> list[str]:
+def _render_nested_dash_items(items: list[str], parent_id: str, config: RenderConfig, *, indent: int) -> list[str]:
     lines: list[str] = []
-    for item in items:
+    for index, item in enumerate(items):
+        item_id = f"{parent_id}-d{index}"
         lead_text, children = _split_inline_dash_items(item)
         item_text = lead_text.strip() if children else item.strip()
 
         child_indent = indent
         if item_text:
-            lines.append(f"{' ' * indent}- {item_text}")
+            line = f"{' ' * indent}- {item_text}"
+            if config.add_block_links:
+                line += f" ^{item_id}"
+            lines.append(line)
             child_indent = indent + 3
 
         if children:
-            lines.extend(_render_nested_dash_items(children, indent=child_indent))
+            lines.extend(_render_nested_dash_items(children, item_id, config, indent=child_indent))
 
     return lines
 
@@ -302,9 +342,7 @@ def _coerce_document(document: EurLexDocument | dict) -> EurLexDocument:
     if isinstance(document, EurLexDocument):
         return document
 
-    preamble_recitals = [
-        Recital(**recital) for recital in document.get("preamble_recitals", [])
-    ]
+    preamble_recitals = [Recital(**recital) for recital in document.get("preamble_recitals", [])]
     preamble_notes = [Note(**note) for note in document.get("preamble_notes", [])]
     articles = [_dict_to_section(item) for item in document.get("articles", [])]
     annexes = [_dict_to_section(item) for item in document.get("annexes", [])]
@@ -324,7 +362,7 @@ def _coerce_document(document: EurLexDocument | dict) -> EurLexDocument:
     )
 
 
-def _build_navigation(document: EurLexDocument) -> list[str]:
+def _build_navigation(document: EurLexDocument, config: RenderConfig) -> list[str]:
     lines: list[str] = []
     entries: list[tuple[str, str]] = []
 
@@ -341,45 +379,81 @@ def _build_navigation(document: EurLexDocument) -> list[str]:
     lines.append("## Navigation")
     lines.append("")
     for label, anchor in entries:
-        lines.append(f"- [{label}](#{anchor})")
+        if config.links_style == "wikilinks":
+            lines.append(f"- [[#{anchor}|{label}]]")
+        else:
+            lines.append(f"- [{label}](#{anchor})")
     return lines
 
 
 def _apply_intra_links(
-    text: str, article_links: dict[str, str], annex_links: dict[str, str]
+    text: str, article_links: dict[str, str], annex_links: dict[str, str], config: RenderConfig
 ) -> str:
     result = text
 
-    for section_id, anchor in sorted(
-        article_links.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        escaped = re.escape(section_id)
-        result = re.sub(
-            rf"\b({escaped})\b",
-            lambda match: _maybe_link(
-                match.group(1), anchor, match.string, match.start()
-            ),
-            result,
-        )
+    def semantic_replacer(match: re.Match[str], lookup: dict[str, str]) -> str:
+        full_match = match.group(0)
+        section_id = match.group(1).strip()
+        extensions = match.group(2)
 
-    for section_id, anchor in sorted(
-        annex_links.items(), key=lambda item: len(item[0]), reverse=True
-    ):
-        escaped = re.escape(section_id)
-        result = re.sub(
-            rf"\b({escaped})\b",
-            lambda match: _maybe_link(
-                match.group(1), anchor, match.string, match.start()
-            ),
-            result,
-        )
+        start = match.start()
+        source = match.string
+        if start > 0 and source[start - 1] in {"[", "|"}:
+            return full_match
+
+        anchor = lookup.get(section_id)
+        if not anchor:
+            return full_match
+
+        target = anchor
+        # If there are bracket groups e.g. "(1)(a)" in extensions, construct the block ID
+        if extensions and config.add_block_links:
+            parts = [p.lower() for p in re.findall(r"\(([^)]+)\)", extensions)]
+            block_id = anchor + "-" + "-".join(parts)
+            target = f"^{block_id}"
+
+        if config.links_style == "wikilinks":
+            return f"[[#{target}|{full_match}]]"
+        return f"[{full_match}](#{target})"
+
+    # Handle semantic links for Articles
+    if config.resolve_semantic_links:
+        for section_id in sorted(article_links.keys(), key=len, reverse=True):
+            escaped = re.escape(section_id)
+            pattern = rf"\b({escaped})((?:\([a-zA-Z0-9]+\))*)\b"
+            result = re.sub(pattern, lambda m: semantic_replacer(m, article_links), result)
+    else:
+        for section_id, anchor in sorted(article_links.items(), key=lambda item: len(item[0]), reverse=True):
+            escaped = re.escape(section_id)
+            result = re.sub(
+                rf"\b({escaped})\b",
+                lambda match: _maybe_link(match.group(1), anchor, match.string, match.start(), config.links_style),
+                result,
+            )
+
+    # Handle semantic links for Annexes
+    if config.resolve_semantic_links:
+        for section_id in sorted(annex_links.keys(), key=len, reverse=True):
+            escaped = re.escape(section_id)
+            pattern = rf"\b({escaped})((?:\([a-zA-Z0-9]+\))*)\b"
+            result = re.sub(pattern, lambda m: semantic_replacer(m, annex_links), result)
+    else:
+        for section_id, anchor in sorted(annex_links.items(), key=lambda item: len(item[0]), reverse=True):
+            escaped = re.escape(section_id)
+            result = re.sub(
+                rf"\b({escaped})\b",
+                lambda match: _maybe_link(match.group(1), anchor, match.string, match.start(), config.links_style),
+                result,
+            )
 
     return result
 
 
-def _maybe_link(label: str, anchor: str, source: str, start: int) -> str:
-    if start > 0 and source[start - 1] == "[":
+def _maybe_link(label: str, anchor: str, source: str, start: int, style: str) -> str:
+    if start > 0 and source[start - 1] in {"[", "|"}:
         return label
+    if style == "wikilinks":
+        return f"[[#{anchor}|{label}]]"
     return f"[{label}](#{anchor})"
 
 
