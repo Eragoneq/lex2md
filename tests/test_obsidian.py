@@ -47,7 +47,6 @@ def _article(
         body=body,
         paragraphs=paragraphs or [],
         notes=notes or [],
-        anchor=f"article-{num.lower()}",
     )
 
 
@@ -62,7 +61,6 @@ def _annex(
         title=title,
         body=body,
         paragraphs=paragraphs or [],
-        anchor=f"annex-{num.lower()}",
     )
 
 
@@ -190,12 +188,12 @@ class TestFootnoteNamespacing:
 
 
 class TestWikilinks:
-    """Navigation and intra-document links use [[#anchor|label]] style."""
+    """Navigation and intra-document links use [[#Heading]] style."""
 
     def test_navigation_uses_wikilinks(self) -> None:
         doc = _make_doc(articles=[_article("1", "Subject", body="Body.")])
         result = generate_markdown(doc, links_style="wikilinks")
-        assert "[[#article-1|Article 1 - Subject]]" in result
+        assert "[[#Article 1 - Subject]]" in result
 
     def test_no_navigation_in_standard_markdown(self) -> None:
         doc = _make_doc(articles=[_article("1", "Subject", body="Body.")])
@@ -208,7 +206,7 @@ class TestWikilinks:
             preamble="See Article 1.",
         )
         result = generate_markdown(doc, links_style="wikilinks")
-        assert "[[#article-1|Article 1]]" in result
+        assert "[[#Article 1|Article 1]]" in result
 
     def test_annex_intra_links_use_wikilinks(self) -> None:
         doc = _make_doc(
@@ -216,7 +214,7 @@ class TestWikilinks:
             preamble="See ANNEX IV.",
         )
         result = generate_markdown(doc, links_style="wikilinks")
-        assert "[[#annex-iv|ANNEX IV]]" in result
+        assert "[[#ANNEX IV|ANNEX IV]]" in result
 
 
 # ===================================================================
@@ -236,7 +234,7 @@ class TestSemanticLinkResolution:
             preamble="See Article 3.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 3](#article-3)" in result
+        assert "[Article 3](#Article 3)" in result
 
     def test_simple_article_reference_wikilinks(self) -> None:
         doc = _make_doc(
@@ -244,27 +242,27 @@ class TestSemanticLinkResolution:
             preamble="See Article 3.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True, links_style="wikilinks")
-        assert "[[#article-3|Article 3]]" in result
+        assert "[[#Article 3|Article 3]]" in result
 
     # --- Annex references ---
 
     def test_annex_reference(self) -> None:
-        """'Annex IV' → link to annex-iv."""
+        """'Annex IV' → link to heading."""
         doc = _make_doc(
             annexes=[_annex("IV", body="Content.")],
             preamble="See Annex IV for details.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Annex IV](#annex-iv)" in result
+        assert "[Annex IV](#Annex IV)" in result
 
     def test_annex_reference_uppercase(self) -> None:
-        """'ANNEX IV' → link to annex-iv."""
+        """'ANNEX IV' → link to heading."""
         doc = _make_doc(
             annexes=[_annex("IV", body="Content.")],
             preamble="See ANNEX IV for details.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[ANNEX IV](#annex-iv)" in result
+        assert "[ANNEX IV](#ANNEX IV)" in result
 
     # --- Article with parenthesized qualifiers ---
 
@@ -406,7 +404,7 @@ class TestSemanticLinkResolution:
     # --- Qualifiers without block links → link to section only ---
 
     def test_qualifier_falls_back_to_section_without_block_links(self) -> None:
-        """When block links are off, 'Article 3(1)(a)' links to article-3 level only."""
+        """When block links are off, 'Article 3(1)(a)' links to heading only."""
         doc = _make_doc(
             articles=[_article("3", body="Body.")],
             preamble="As stated in Article 3(1)(a).",
@@ -414,7 +412,7 @@ class TestSemanticLinkResolution:
         result = generate_markdown(
             doc, resolve_semantic_links=True, add_block_links=False,
         )
-        assert "[Article 3(1)(a)](#article-3)" in result
+        assert "[Article 3(1)(a)](#Article 3)" in result
 
     # --- External document exclusion ---
 
@@ -482,15 +480,15 @@ class TestSemanticLinkResolution:
             preamble="Article 1, Article 3 and ANNEX IV are relevant.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 1](#article-1)" in result
-        assert "[Article 3](#article-3)" in result
-        assert "[ANNEX IV](#annex-iv)" in result
+        assert "[Article 1](#Article 1)" in result
+        assert "[Article 3](#Article 3)" in result
+        assert "[ANNEX IV](#ANNEX IV)" in result
 
     def test_article_with_letter_suffix(self) -> None:
-        """'Article 5a' → link to article-5a."""
+        """'Article 5a' → link to heading."""
         doc = _make_doc(
             articles=[_article("5a", body="Body.")],
             preamble="See Article 5a.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 5a](#article-5a)" in result
+        assert "[Article 5a](#Article 5a)" in result

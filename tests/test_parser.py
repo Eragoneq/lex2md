@@ -34,7 +34,6 @@ def test_parse_eurlex_html_basic() -> None:
     assert "OJ C 31" in result["preamble_notes"][0]["text"]
     assert len(result["articles"][0]["notes"]) == 1
     assert result["articles"][0]["notes"][0]["id"] == "2"
-    assert result["articles"][0]["anchor"] == "article-1"
 
 
 def test_parse_document_html_returns_model() -> None:

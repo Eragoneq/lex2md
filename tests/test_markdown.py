@@ -15,12 +15,11 @@ def test_generate_markdown_with_notes_and_navigation() -> None:
                 chapter_title="GENERAL",
                 body="Body of Article 1 with [^2].",
                 notes=[Note(id="2", text="Note 2 text")],
-                anchor="article-1",
             )
         ],
         annexes=[
             Section(
-                id="ANNEX I", title="List", body="Item 1", notes=[], anchor="annex-i"
+                id="ANNEX I", title="List", body="Item 1", notes=[]
             )
         ],
         celex="32024R0111",
@@ -34,7 +33,7 @@ def test_generate_markdown_with_notes_and_navigation() -> None:
     # Navigation is only generated for wikilinks mode
     assert "## Navigation" not in result
     assert "### CHAPTER I - GENERAL" in result
-    assert "See [Article 1](#article-1) and [ANNEX I](#annex-i) with [^1]." in result
+    assert "See [Article 1](#Article 1) and [ANNEX I](#ANNEX I) with [^1]." in result
     assert "[^1]: Note 1 text" in result
     assert "[^2]: Note 2 text" in result
 
@@ -52,7 +51,6 @@ def test_generate_markdown_accepts_dict() -> None:
                 "chapter_title": "GENERAL",
                 "body": "Body of Article 1 with [^2].",
                 "notes": [{"id": "2", "text": "Note 2 text"}],
-                "anchor": "article-1",
             }
         ],
         "annexes": [],
@@ -64,8 +62,7 @@ def test_generate_markdown_accepts_dict() -> None:
     assert "Some preamble text with [^1]." in result
     assert "### CHAPTER I - GENERAL" in result
     assert "[^1]: Note 1 text" in result
-    # Article body now gets intra-linked since Article 1 is a known section
-    assert "[Article 1](#article-1)" in result
+    assert "[Article 1](#Article 1)" in result
     assert "[^2]: Note 2 text" in result
 
 
@@ -106,7 +103,6 @@ def test_generate_markdown_renders_paragraph_points_as_sublists() -> None:
                     ),
                 ],
                 notes=[],
-                anchor="article-3",
             )
         ],
     )
@@ -155,7 +151,6 @@ def test_generate_markdown_renders_nested_subpoints_under_point() -> None:
                     )
                 ],
                 notes=[],
-                anchor="article-3",
             )
         ],
     )
@@ -201,7 +196,6 @@ def test_generate_markdown_dict_paragraph_points_keep_symbol_and_unordered_list(
                     }
                 ],
                 "notes": [],
-                "anchor": "article-4",
             }
         ],
         "annexes": [],
@@ -234,7 +228,7 @@ def test_generate_markdown_does_not_number_unnumbered_paragraphs() -> None:
                     ),
                 ],
                 notes=[],
-                anchor="article-5",
+
             )
         ],
     )
@@ -269,7 +263,7 @@ def test_generate_markdown_dash_enumeration_uses_native_sublist_marker() -> None
                     )
                 ],
                 notes=[],
-                anchor="article-6",
+
             )
         ],
     )
@@ -308,7 +302,7 @@ def test_generate_markdown_renders_inline_dash_enumeration_inside_point() -> Non
                     )
                 ],
                 notes=[],
-                anchor="article-7",
+
             )
         ],
     )
@@ -347,7 +341,7 @@ def test_generate_markdown_renders_multi_level_nested_dash_lists() -> None:
                     )
                 ],
                 notes=[],
-                anchor="article-8",
+
             )
         ],
     )
@@ -370,7 +364,7 @@ def test_generate_markdown_renders_final_provisions_and_signature() -> None:
                 id="Article 1",
                 title="Scope",
                 body="1. This Regulation applies.",
-                anchor="article-1",
+
             )
         ],
         final_text=(
@@ -397,7 +391,7 @@ def test_generate_markdown_annex_heading_includes_annex_title() -> None:
                 id="ANNEX I",
                 title="RISK REGISTER",
                 body="#### SECTION I - General items\n\nText.",
-                anchor="annex-i",
+
             )
         ],
     )

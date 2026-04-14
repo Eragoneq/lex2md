@@ -42,7 +42,6 @@ class Section:
     body: str = ""
     paragraphs: list[Paragraph] = field(default_factory=list)
     notes: list[Note] = field(default_factory=list)
-    anchor: str = ""
 
 
 @dataclass
@@ -89,7 +88,6 @@ def _section_to_dict(section: Section) -> dict[str, Any]:
             for paragraph in section.paragraphs
         ],
         "notes": [asdict(note) for note in section.notes],
-        "anchor": section.anchor,
     }
 
 

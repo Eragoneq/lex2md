@@ -259,17 +259,8 @@ def _apply_article_hierarchy(
     articles: list[Section], chapter_map: dict[str, dict[str, str]]
 ) -> None:
     for article in articles:
-        article_anchor = (
-            article.anchor.replace("article-", "art_") if article.anchor else ""
-        )
-        mapping = chapter_map.get(article_anchor)
-        if mapping:
-            article.chapter_id = mapping.get("chapter_id", "")
-            article.chapter_title = mapping.get("chapter_title", "")
-            article.section_id = mapping.get("section_id", "")
-            article.section_title = mapping.get("section_title", "")
-            continue
-
+        # Derive the chapter_map key from article.id
+        # article.id is like "Article 1" → chapter_map key is like "art_1"
         article_match = re.search(
             r"Article\s+(\d+[a-zA-Z-]*)", article.id, re.IGNORECASE
         )
@@ -277,15 +268,15 @@ def _apply_article_hierarchy(
             continue
 
         number = article_match.group(1).lower().replace("-", "_")
-        fallback_id = f"art_{number}"
-        fallback = chapter_map.get(fallback_id)
-        if not fallback:
-            continue
+        art_key = f"art_{number}"
+        mapping = chapter_map.get(art_key)
+        if mapping:
+            article.chapter_id = mapping.get("chapter_id", "")
+            article.chapter_title = mapping.get("chapter_title", "")
+            article.section_id = mapping.get("section_id", "")
+            article.section_title = mapping.get("section_title", "")
 
-        article.chapter_id = fallback.get("chapter_id", "")
-        article.chapter_title = fallback.get("chapter_title", "")
-        article.section_id = fallback.get("section_id", "")
-        article.section_title = fallback.get("section_title", "")
+
 
 def _extract_final_provisions(soup: BeautifulSoup) -> tuple[str, list[str]]:
     final_div = soup.find(
@@ -465,14 +456,12 @@ def _extract_annex_from_div(soup: BeautifulSoup, div: Tag) -> Section | None:
     if not annex_id and not annex_title and not cleaned_body:
         return None
 
-    anchor_source = annex_id or annex_title or "annex"
     return Section(
         id=annex_id,
         title=annex_title,
         body=cleaned_body,
         paragraphs=_extract_article_paragraphs(cleaned_body),
         notes=namespaced_notes,
-        anchor=_slugify(anchor_source, prefix="annex"),
     )
 
 def _extract_section_from_div(
@@ -517,7 +506,6 @@ def _extract_section_from_div(
     if not section_id and not section_title and not cleaned_body:
         return None
 
-    anchor_source = section_id or section_title or default_prefix
     return Section(
         id=section_id,
         title=section_title,
@@ -526,7 +514,6 @@ def _extract_section_from_div(
         if parse_paragraphs
         else [],
         notes=notes,
-        anchor=_slugify(anchor_source, prefix=default_prefix),
     )
 
 def _extract_legacy_article(soup: BeautifulSoup, tag: Tag) -> Section | None:
@@ -573,7 +560,6 @@ def _extract_legacy_article(soup: BeautifulSoup, tag: Tag) -> Section | None:
         body=cleaned_body,
         paragraphs=_extract_article_paragraphs(cleaned_body),
         notes=notes,
-        anchor=_slugify(section_id or section_title or "article", prefix="article"),
     )
 
 def _extract_notes(soup: BeautifulSoup, container: Tag | None) -> list[Note]:
