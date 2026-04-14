@@ -3,7 +3,7 @@ name = "lex2md"
 version = "0.1.0"
 description = "Fetch EU legal documents from EUR-Lex and convert them to structured Markdown."
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "BSL-1.1" }
 requires-python = ">=3.12"
 authors = [{ name = "Eragoneq" }]
 keywords = ["eur-lex", "eu-law", "markdown", "legal", "celex"]
@@ -33,7 +33,13 @@ dev-dependencies = [
     "pytest>=8.0",
     "pytest-mock>=3.14",
     "ruff>=0.8",
+    "mypy>=1.10",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py312"
