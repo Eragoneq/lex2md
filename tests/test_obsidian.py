@@ -528,3 +528,109 @@ class TestSemanticLinkResolution:
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
         assert "[Article 5a](#Article%205a)" in result
+
+
+# ===================================================================
+# 5. Semantic links inside points and subpoints
+# ===================================================================
+
+
+class TestSemanticLinksInPoints:
+    """Semantic link resolution applies to all rendered text including point
+    and subpoint content."""
+
+    def test_link_resolved_in_point_text(self) -> None:
+        """A reference to Article 5 inside a point (a) of Article 3 is linked."""
+        doc = _make_doc(
+            articles=[
+                _article("3", paragraphs=[
+                    Paragraph(
+                        number="1",
+                        text="Requirements:",
+                        points=[
+                            Point(
+                                marker="(a)", style="lower_alpha",
+                                text="in accordance with Article 5",
+                            ),
+                        ],
+                    ),
+                ]),
+                _article("5", body="Body of Article 5."),
+            ],
+        )
+        result = generate_markdown(doc, resolve_semantic_links=True, links_style="wikilinks")
+        assert "[[#Article 5|Article 5]]" in result
+
+    def test_link_resolved_in_subpoint_text(self) -> None:
+        """A reference inside a subpoint is also linked."""
+        doc = _make_doc(
+            articles=[
+                _article("2", paragraphs=[
+                    Paragraph(
+                        number="1",
+                        text="Obligations:",
+                        points=[
+                            Point(
+                                marker="(a)", style="lower_alpha",
+                                text="including:",
+                                subpoints=[
+                                    Point(
+                                        marker="(i)", style="lower_roman",
+                                        text="the conditions in Article 7",
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                ]),
+                _article("7", body="Body of Article 7."),
+            ],
+        )
+        result = generate_markdown(doc, resolve_semantic_links=True, links_style="wikilinks")
+        assert "[[#Article 7|Article 7]]" in result
+
+    def test_link_resolved_in_point_with_block_links(self) -> None:
+        """Block-qualified references inside points produce correct block links."""
+        doc = _make_doc(
+            articles=[
+                _article("1", paragraphs=[
+                    Paragraph(
+                        number="1",
+                        text="Subject:",
+                        points=[
+                            Point(
+                                marker="(a)", style="lower_alpha",
+                                text="as referred to in Article 3(2)(b)",
+                            ),
+                        ],
+                    ),
+                ]),
+                _article("3", body="Body of Article 3."),
+            ],
+        )
+        result = generate_markdown(
+            doc, resolve_semantic_links=True, add_block_links=True, links_style="wikilinks",
+        )
+        assert "[[#^article-3-2-b|Article 3(2)(b)]]" in result
+
+    def test_annex_reference_resolved_in_point(self) -> None:
+        """An annex reference inside a point is linked."""
+        doc = _make_doc(
+            articles=[
+                _article("1", paragraphs=[
+                    Paragraph(
+                        number="1",
+                        text="Information:",
+                        points=[
+                            Point(
+                                marker="(a)", style="lower_alpha",
+                                text="listed in ANNEX IV",
+                            ),
+                        ],
+                    ),
+                ]),
+            ],
+            annexes=[_annex("IV", body="Annex content.")],
+        )
+        result = generate_markdown(doc, resolve_semantic_links=True, links_style="wikilinks")
+        assert "[[#ANNEX IV|ANNEX IV]]" in result

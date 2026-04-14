@@ -225,13 +225,16 @@ def _render_paragraphs(
             main_line += f" ^{block_id}"
 
         lines.append(main_line)
-        lines.extend(_render_paragraph_points(paragraph.points, block_id, config))
+        lines.extend(_render_paragraph_points(paragraph.points, block_id, config, link_ctx))
         if index + 1 < total:
             lines.append("")
     return lines
 
 
-def _render_paragraph_points(points: list[Point], parent_id: str, config: RenderConfig) -> list[str]:
+def _render_paragraph_points(
+    points: list[Point], parent_id: str, config: RenderConfig,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     filtered = [point for point in points if point.text.strip()]
     if not filtered:
         return []
@@ -240,14 +243,19 @@ def _render_paragraph_points(points: list[Point], parent_id: str, config: Render
     for index, point in enumerate(filtered):
         marker_slug = re.sub(r'[^a-zA-Z0-9]', '', point.marker.lower()) if point.marker else f"pt{index}"
         pt_id = f"{parent_id}-{marker_slug}"
-        lines.extend(_render_point_with_nested_dash_list(point, pt_id, config, indent=3))
+        lines.extend(_render_point_with_nested_dash_list(point, pt_id, config, indent=3, link_ctx=link_ctx))
     return lines
 
 
-def _render_point_with_nested_dash_list(point: Point, block_id: str, config: RenderConfig, *, indent: int) -> list[str]:
+def _render_point_with_nested_dash_list(
+    point: Point, block_id: str, config: RenderConfig, *, indent: int,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     lead_text, nested_items = _split_inline_dash_items(point.text)
     if config.add_block_links:
         lead_text = _namespace_footnote_refs(lead_text)
+    if link_ctx:
+        lead_text = _apply_intra_links(lead_text, link_ctx)
 
     main_line = f"{' ' * indent}- {_format_point_text(point.marker, lead_text)}".rstrip()
     if config.add_block_links:
@@ -255,22 +263,28 @@ def _render_point_with_nested_dash_list(point: Point, block_id: str, config: Ren
     lines = [main_line]
 
     if point.subpoints:
-        lines.extend(_render_point_subpoints(point.subpoints, block_id, config, indent=indent + 3))
+        lines.extend(_render_point_subpoints(point.subpoints, block_id, config, indent=indent + 3, link_ctx=link_ctx))
 
-    lines.extend(_render_nested_dash_items(nested_items, block_id, config, indent=indent + 3))
+    lines.extend(_render_nested_dash_items(nested_items, block_id, config, indent=indent + 3, link_ctx=link_ctx))
     return lines
 
 
-def _render_point_subpoints(subpoints: list[Point], parent_id: str, config: RenderConfig, *, indent: int) -> list[str]:
+def _render_point_subpoints(
+    subpoints: list[Point], parent_id: str, config: RenderConfig, *, indent: int,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     lines: list[str] = []
     for index, subpoint in enumerate(subpoints):
         marker_slug = re.sub(r'[^a-zA-Z0-9]', '', subpoint.marker.lower()) if subpoint.marker else f"spt{index}"
         spt_id = f"{parent_id}-{marker_slug}"
-        lines.extend(_render_point_with_nested_dash_list(subpoint, spt_id, config, indent=indent))
+        lines.extend(_render_point_with_nested_dash_list(subpoint, spt_id, config, indent=indent, link_ctx=link_ctx))
     return lines
 
 
-def _render_nested_dash_items(items: list[str], parent_id: str, config: RenderConfig, *, indent: int) -> list[str]:
+def _render_nested_dash_items(
+    items: list[str], parent_id: str, config: RenderConfig, *, indent: int,
+    link_ctx: _LinkContext | None = None,
+) -> list[str]:
     lines: list[str] = []
     for index, item in enumerate(items):
         item_id = f"{parent_id}-d{index}"
@@ -278,6 +292,8 @@ def _render_nested_dash_items(items: list[str], parent_id: str, config: RenderCo
         item_text = lead_text.strip() if children else item.strip()
         if config.add_block_links:
             item_text = _namespace_footnote_refs(item_text)
+        if link_ctx:
+            item_text = _apply_intra_links(item_text, link_ctx)
 
         child_indent = indent
         if item_text:
@@ -288,7 +304,7 @@ def _render_nested_dash_items(items: list[str], parent_id: str, config: RenderCo
             child_indent = indent + 3
 
         if children:
-            lines.extend(_render_nested_dash_items(children, item_id, config, indent=child_indent))
+            lines.extend(_render_nested_dash_items(children, item_id, config, indent=child_indent, link_ctx=link_ctx))
 
     return lines
 
