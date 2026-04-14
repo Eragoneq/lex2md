@@ -1,0 +1,9 @@
+__pycache__/
+.venv/
+.obsidian/
+.pytest_cache/
+.ruff_cache/
+
+output*.md
+session-*.md
+out.json
