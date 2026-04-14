@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from lex2md.models import EurLexDocument, Note, Paragraph, Point, Recital, Section
 
@@ -26,10 +27,17 @@ def generate_markdown(
         resolve_semantic_links=resolve_semantic_links,
     )
     parsed = _coerce_document(document)
-    # Map section IDs to their heading labels for wikilink navigation
+    # Map section IDs to their full heading labels for wikilink targets
     article_ids: set[str] = {section.id for section in parsed.articles if section.id}
     annex_ids: set[str] = {section.id for section in parsed.annexes if section.id}
-    link_ctx = _LinkContext(article_ids, annex_ids, config)
+    heading_map: dict[str, str] = {}
+    for section in parsed.articles:
+        if section.id:
+            heading_map[section.id] = _section_header(section)
+    for section in parsed.annexes:
+        if section.id:
+            heading_map[section.id] = _section_header(section)
+    link_ctx = _LinkContext(article_ids, annex_ids, heading_map, config)
 
     parts: list[str] = []
 
@@ -111,9 +119,10 @@ def generate_markdown(
 
 @dataclass
 class _LinkContext:
-    """Carries known section IDs through the render pipeline for link resolution."""
+    """Carries known section IDs and heading labels through the render pipeline."""
     article_ids: set[str]
     annex_ids: set[str]
+    heading_map: dict[str, str]  # section.id → full heading label
     config: RenderConfig
 
 
@@ -482,8 +491,23 @@ def _build_case_insensitive_id_set(
         result.add(key.upper())
         result.add(key.title())
         # Handle "Annex IV" / "ANNEX IV" specifically
-        if key.startswith("ANNEX"):
+        if key.upper().startswith("ANNEX"):
             result.add("Annex" + key[5:])
+            result.add("ANNEX" + key[5:])
+    return result
+
+
+def _build_case_insensitive_heading_map(
+    heading_map: dict[str, str],
+) -> dict[str, str]:
+    """Build a heading map that also contains case variants of annex IDs."""
+    result: dict[str, str] = dict(heading_map)
+    for key, heading in heading_map.items():
+        result[key.upper()] = heading
+        result[key.title()] = heading
+        if key.upper().startswith("ANNEX"):
+            result["Annex" + key[5:]] = heading
+            result["ANNEX" + key[5:]] = heading
     return result
 
 
@@ -492,6 +516,7 @@ def _resolve_semantic_references(
     article_ids: set[str],
     annex_ids: set[str],
     config: RenderConfig,
+    heading_map: dict[str, str] | None = None,
 ) -> str:
     """Post-process text to resolve human-readable citations into internal links.
 
@@ -506,25 +531,26 @@ def _resolve_semantic_references(
     """
     result = text
     expanded_annex_ids = _build_case_insensitive_id_set(annex_ids)
+    expanded_heading_map = _build_case_insensitive_heading_map(heading_map or {})
 
     # 1. Handle compound "Articles X and Y" first (longer match)
     result = re.sub(
         _ARTICLES_COMPOUND,
-        lambda m: _replace_compound_articles(m, article_ids, config),
+        lambda m: _replace_compound_articles(m, article_ids, config, expanded_heading_map),
         result,
     )
 
     # 2. Handle single "Article X" references (skip already-linked ones)
     result = re.sub(
         _ARTICLE_REF,
-        lambda m: _replace_single_article(m, article_ids, config),
+        lambda m: _replace_single_article(m, article_ids, config, expanded_heading_map),
         result,
     )
 
     # 3. Handle annex references
     result = re.sub(
         _ANNEX_REF,
-        lambda m: _replace_annex_ref(m, expanded_annex_ids, config),
+        lambda m: _replace_annex_ref(m, expanded_annex_ids, config, expanded_heading_map),
         result,
     )
 
@@ -532,7 +558,8 @@ def _resolve_semantic_references(
 
 
 def _replace_compound_articles(
-    match: re.Match[str], known_ids: set[str], config: RenderConfig
+    match: re.Match[str], known_ids: set[str], config: RenderConfig,
+    heading_map: dict[str, str] | None = None,
 ) -> str:
     """Replace 'Articles 5c(4) and 5e(2)' with two individual links."""
     full = match.group(0)
@@ -546,9 +573,9 @@ def _replace_compound_articles(
     first_raw = match.group("first")
     second_raw = match.group("second")
 
-    first_link = _linkify_article_token(first_raw, known_ids, config)
+    first_link = _linkify_article_token(first_raw, known_ids, config, heading_map)
     if second_raw:
-        second_link = _linkify_article_token(second_raw, known_ids, config)
+        second_link = _linkify_article_token(second_raw, known_ids, config, heading_map)
         return f"Articles {first_link} and {second_link}"
     return f"Articles {first_link}"
 
@@ -557,6 +584,7 @@ def _replace_single_article(
     match: re.Match[str],
     known_ids: set[str],
     config: RenderConfig,
+    heading_map: dict[str, str] | None = None,
 ) -> str:
     """Replace 'Article 5a(23)' or 'Article 3 paragraph 5, point (a)' with a link."""
     full = match.group(0)
@@ -579,7 +607,8 @@ def _replace_single_article(
         return full
 
     slug = _slugify(base)
-    target = _section_header_for_id(base)  # heading label
+    heading = (heading_map or {}).get(base, base)
+    target = heading  # full heading label
     if qual.strip() and config.add_block_links:
         parts = _extract_qualifier_parts(qual)
         if parts:
@@ -589,7 +618,8 @@ def _replace_single_article(
 
 
 def _replace_annex_ref(
-    match: re.Match[str], known_ids: set[str], config: RenderConfig
+    match: re.Match[str], known_ids: set[str], config: RenderConfig,
+    heading_map: dict[str, str] | None = None,
 ) -> str:
     """Replace 'Annex IV' or 'Annex IV, point 1' with a link."""
     full = match.group(0)
@@ -607,7 +637,8 @@ def _replace_annex_ref(
         return full
 
     slug = _slugify(annex_base)
-    target = _section_header_for_id(annex_base)  # heading label
+    heading = (heading_map or {}).get(annex_base, annex_base)
+    target = heading  # full heading label
     if annex_qual.strip() and config.add_block_links:
         parts = _extract_qualifier_parts(annex_qual)
         if parts:
@@ -617,7 +648,8 @@ def _replace_annex_ref(
 
 
 def _linkify_article_token(
-    token: str, known_ids: set[str], config: RenderConfig
+    token: str, known_ids: set[str], config: RenderConfig,
+    heading_map: dict[str, str] | None = None,
 ) -> str:
     """Turn a bare token like '5c(4)' into a linked fragment."""
     num_match = re.match(r"(\d+[a-zA-Z]?)(.*)", token)
@@ -632,7 +664,8 @@ def _linkify_article_token(
         return token
 
     slug = _slugify(article_id)
-    target = _section_header_for_id(article_id)  # heading label
+    heading = (heading_map or {}).get(article_id, article_id)
+    target = heading  # full heading label
     if qual.strip() and config.add_block_links:
         parts = _extract_qualifier_parts(qual)
         if parts:
@@ -641,14 +674,6 @@ def _linkify_article_token(
     return _format_link(token, target, config.links_style)
 
 
-def _section_header_for_id(section_id: str) -> str:
-    """Return the heading text for a section ID (used as wikilink target).
-
-    For now this is just the section ID itself (e.g. 'Article 3').
-    If the section has a title it will appear in the heading as 'Article 3 - Title',
-    but we link to the ID portion since we don't have the title at this point.
-    """
-    return section_id
 
 
 def _slugify(text: str) -> str:
@@ -693,10 +718,17 @@ def _extract_qualifier_parts(qual: str) -> list[str]:
 
 
 def _format_link(label: str, target: str, style: str) -> str:
-    """Format a link in the requested style."""
+    """Format a link in the requested style.
+
+    For wikilinks the target is used verbatim (Obsidian resolves headings by label).
+    For standard markdown links the target is URL-encoded so spaces and special
+    characters are safe.
+    """
     if style == "wikilinks":
         return f"[[#{target}|{label}]]"
-    return f"[{label}](#{target})"
+    # URL-encode the fragment for standard markdown (spaces → %20 etc.)
+    encoded = quote(target, safe="^-")
+    return f"[{label}](#{encoded})"
 
 
 def _apply_intra_links(
@@ -707,14 +739,15 @@ def _apply_intra_links(
 
     if config.resolve_semantic_links:
         result = _resolve_semantic_references(
-            result, link_ctx.article_ids, link_ctx.annex_ids, config
+            result, link_ctx.article_ids, link_ctx.annex_ids, config,
+            heading_map=link_ctx.heading_map,
         )
     else:
-        # Simple non-semantic linking: wrap known section IDs as wikilinks
+        # Simple non-semantic linking: wrap known section IDs
         all_ids = link_ctx.article_ids | link_ctx.annex_ids
         for section_id in sorted(all_ids, key=len, reverse=True):
             escaped = re.escape(section_id)
-            heading = _section_header_for_id(section_id)
+            heading = link_ctx.heading_map.get(section_id, section_id)
             result = re.sub(
                 rf"\b({escaped})\b",
                 lambda match, h=heading: _maybe_link(
@@ -731,7 +764,8 @@ def _maybe_link(label: str, target: str, source: str, start: int, style: str) ->
         return label
     if style == "wikilinks":
         return f"[[#{target}|{label}]]"
-    return f"[{label}](#{target})"
+    encoded = quote(target, safe="^-")
+    return f"[{label}](#{encoded})"
 
 
 def _dict_to_section(data: dict) -> Section:

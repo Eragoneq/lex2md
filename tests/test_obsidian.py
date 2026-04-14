@@ -216,6 +216,42 @@ class TestWikilinks:
         result = generate_markdown(doc, links_style="wikilinks")
         assert "[[#ANNEX IV|ANNEX IV]]" in result
 
+    def test_wikilink_uses_full_heading_with_title(self) -> None:
+        """Links to 'Article 3' with title 'Scope' should target '[[#Article 3 - Scope]]'."""
+        doc = _make_doc(
+            articles=[_article("3", "Scope", body="Body.")],
+            preamble="See Article 3.",
+        )
+        result = generate_markdown(doc, links_style="wikilinks")
+        assert "[[#Article 3 - Scope|Article 3]]" in result
+
+    def test_wikilink_annex_uses_full_heading_with_title(self) -> None:
+        """Links to 'ANNEX IV' with title 'RISK REGISTER' should target full heading."""
+        doc = _make_doc(
+            annexes=[_annex("IV", "RISK REGISTER", body="Content.")],
+            preamble="See ANNEX IV.",
+        )
+        result = generate_markdown(doc, links_style="wikilinks")
+        assert "[[#ANNEX IV - RISK REGISTER|ANNEX IV]]" in result
+
+    def test_standard_markdown_link_is_url_encoded(self) -> None:
+        """Standard markdown links must URL-encode spaces in the target."""
+        doc = _make_doc(
+            articles=[_article("3", "Scope", body="Body.")],
+            preamble="See Article 3.",
+        )
+        result = generate_markdown(doc)
+        assert "[Article 3](#Article%203%20-%20Scope)" in result
+
+    def test_standard_markdown_annex_link_is_url_encoded(self) -> None:
+        """Standard markdown annex links must URL-encode the full heading."""
+        doc = _make_doc(
+            annexes=[_annex("IV", "RISK REGISTER", body="Content.")],
+            preamble="See ANNEX IV.",
+        )
+        result = generate_markdown(doc)
+        assert "[ANNEX IV](#ANNEX%20IV%20-%20RISK%20REGISTER)" in result
+
 
 # ===================================================================
 # 4. Semantic link resolution — the core feature
@@ -234,7 +270,7 @@ class TestSemanticLinkResolution:
             preamble="See Article 3.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 3](#Article 3)" in result
+        assert "[Article 3](#Article%203)" in result
 
     def test_simple_article_reference_wikilinks(self) -> None:
         doc = _make_doc(
@@ -253,7 +289,7 @@ class TestSemanticLinkResolution:
             preamble="See Annex IV for details.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Annex IV](#Annex IV)" in result
+        assert "[Annex IV](#ANNEX%20IV)" in result
 
     def test_annex_reference_uppercase(self) -> None:
         """'ANNEX IV' → link to heading."""
@@ -262,7 +298,7 @@ class TestSemanticLinkResolution:
             preamble="See ANNEX IV for details.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[ANNEX IV](#ANNEX IV)" in result
+        assert "[ANNEX IV](#ANNEX%20IV)" in result
 
     # --- Article with parenthesized qualifiers ---
 
@@ -412,7 +448,7 @@ class TestSemanticLinkResolution:
         result = generate_markdown(
             doc, resolve_semantic_links=True, add_block_links=False,
         )
-        assert "[Article 3(1)(a)](#Article 3)" in result
+        assert "[Article 3(1)(a)](#Article%203)" in result
 
     # --- External document exclusion ---
 
@@ -480,9 +516,9 @@ class TestSemanticLinkResolution:
             preamble="Article 1, Article 3 and ANNEX IV are relevant.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 1](#Article 1)" in result
-        assert "[Article 3](#Article 3)" in result
-        assert "[ANNEX IV](#ANNEX IV)" in result
+        assert "[Article 1](#Article%201)" in result
+        assert "[Article 3](#Article%203)" in result
+        assert "[ANNEX IV](#ANNEX%20IV)" in result
 
     def test_article_with_letter_suffix(self) -> None:
         """'Article 5a' → link to heading."""
@@ -491,4 +527,4 @@ class TestSemanticLinkResolution:
             preamble="See Article 5a.",
         )
         result = generate_markdown(doc, resolve_semantic_links=True)
-        assert "[Article 5a](#Article 5a)" in result
+        assert "[Article 5a](#Article%205a)" in result

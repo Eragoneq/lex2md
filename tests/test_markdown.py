@@ -33,7 +33,7 @@ def test_generate_markdown_with_notes_and_navigation() -> None:
     # Navigation is only generated for wikilinks mode
     assert "## Navigation" not in result
     assert "### CHAPTER I - GENERAL" in result
-    assert "See [Article 1](#Article 1) and [ANNEX I](#ANNEX I) with [^1]." in result
+    assert "See [Article 1](#Article%201%20-%20Subject) and [ANNEX I](#ANNEX%20I%20-%20List) with [^1]." in result
     assert "[^1]: Note 1 text" in result
     assert "[^2]: Note 2 text" in result
 
@@ -62,7 +62,7 @@ def test_generate_markdown_accepts_dict() -> None:
     assert "Some preamble text with [^1]." in result
     assert "### CHAPTER I - GENERAL" in result
     assert "[^1]: Note 1 text" in result
-    assert "[Article 1](#Article 1)" in result
+    assert "[Article 1](#Article%201%20-%20Subject)" in result
     assert "[^2]: Note 2 text" in result
 
 
