@@ -55,7 +55,17 @@ def test_cli_json_mode(mocker, mock_fetch, mock_parse, mock_dict, capsys):
 
     captured = capsys.readouterr()
     assert '"title": "Test"' in captured.out
-    assert "Fetching document 12345" in captured.err
+    assert "Fetching document 12345" not in captured.err
+
+
+def test_cli_local_mode(mocker, mock_fetch, mock_parse, mock_markdown):
+    mocker.patch("sys.argv", ["lex2md", "12345", "--local", "dummy.html"])
+    m_open = mocker.patch("builtins.open", mock_open(read_data="<html></html>"))
+
+    main()
+
+    mock_fetch.assert_not_called()
+    m_open.assert_any_call("dummy.html", "r", encoding="utf-8")
 
 
 def test_cli_handles_fetch_error(mocker, mock_fetch):

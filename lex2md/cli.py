@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 
 from .fetcher import EurLexFetcherError, fetch_document_html
@@ -29,16 +30,26 @@ def main() -> None:
         action="store_true",
         help="Write normalized JSON to stdout.",
     )
+    parser.add_argument(
+        "--local",
+        help="Path to local HTML file to parse (bypasses fetching).",
+    )
 
     args = parser.parse_args()
 
-    def log(message: str) -> None:
-        stream = sys.stderr if args.json else sys.stdout
-        print(message, file=stream)
+    log_level = logging.ERROR if args.json else logging.INFO
+    logging.basicConfig(level=log_level, format="%(message)s", stream=sys.stderr)
+    logger = logging.getLogger("lex2md")
 
     try:
-        log(f"Fetching document {args.celex} in {args.lang}...")
-        html = fetch_document_html(args.celex, args.lang)
+        if args.local:
+            logger.info(f"Reading local document {args.local}...")
+            with open(args.local, encoding="utf-8") as f:
+                html = f.read()
+        else:
+            logger.info(f"Fetching document {args.celex} in {args.lang}...")
+            html = fetch_document_html(args.celex, args.lang)
+
         document = parse_document_html(html, celex=args.celex, language=args.lang)
 
         if args.json:
@@ -49,12 +60,12 @@ def main() -> None:
         output_path = args.output or f"{args.celex}.md"
         with open(output_path, "w", encoding="utf-8") as handle:
             handle.write(markdown)
-        log(f"Wrote {output_path}")
+        logger.info(f"Wrote {output_path}")
     except EurLexFetcherError as exc:
-        print(f"Error fetching document: {exc}", file=sys.stderr)
+        logger.error(f"Error fetching document: {exc}")
         raise SystemExit(1) from exc
     except Exception as exc:  # pragma: no cover
-        print(f"Unexpected error: {exc}", file=sys.stderr)
+        logger.error(f"Unexpected error: {exc}")
         raise SystemExit(1) from exc
 
 
