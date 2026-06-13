@@ -21,7 +21,7 @@ class Point:
     marker: str
     style: str
     text: str
-    subpoints: list["Point"] = field(default_factory=list)
+    subpoints: list[Point] = field(default_factory=list)
 
 
 @dataclass
@@ -61,9 +61,7 @@ class EurLexDocument:
 
 def document_to_dict(document: EurLexDocument) -> dict[str, Any]:
     data = asdict(document)
-    data["preamble_recitals"] = [
-        asdict(recital) for recital in document.preamble_recitals
-    ]
+    data["preamble_recitals"] = [asdict(recital) for recital in document.preamble_recitals]
     data["preamble_notes"] = [asdict(note) for note in document.preamble_notes]
     data["articles"] = [_section_to_dict(section) for section in document.articles]
     data["annexes"] = [_section_to_dict(section) for section in document.annexes]

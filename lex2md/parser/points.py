@@ -7,7 +7,7 @@ from lex2md.models import (
     Point,
 )
 
-POINT_MARKER_TOKEN = r"(?:\d+[a-zA-Z]?|[a-z]|[A-Z]|[ivxlcdm]{1,6}|[IVXLCDM]{1,6})"
+POINT_MARKER_TOKEN = r"(?:\d+[a-zA-Z]?|[a-z]{1,3}|[A-Z]{1,3}|[ivxlcdm]{1,6}|[IVXLCDM]{1,6})"
 from lex2md.parser.tables import _extract_table_points
 from lex2md.parser.text import _clean_inline_text
 
@@ -214,7 +214,7 @@ def _should_skip_nested_roman_candidate(
 
 def _extract_nested_subpoints(text: str) -> tuple[str, list[Point]]:
     subpoint_pattern = re.compile(
-        r"(?P<marker>\((?:[ivxlcdm]{1,6}|[IVXLCDM]{1,6}|\d+[a-zA-Z]?)\))\s+"
+        rf"(?P<marker>\({POINT_MARKER_TOKEN}\))\s+"
     )
     matches = [
         match

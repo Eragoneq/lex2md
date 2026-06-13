@@ -73,7 +73,10 @@ def generate_markdown(
         parts.append("## Articles")
         parts.append("")
         has_grouping = any(
-            article.chapter_id or article.chapter_title or article.section_id or article.section_title
+            article.chapter_id
+            or article.chapter_title
+            or article.section_id
+            or article.section_title
             for article in parsed.articles
         )
         article_heading_level = 4 if has_grouping else 3
@@ -95,7 +98,11 @@ def generate_markdown(
                 parts.append("")
                 current_section = section
 
-            parts.extend(_render_section(article, heading_level=article_heading_level, config=config, link_ctx=link_ctx))
+            parts.extend(
+                _render_section(
+                    article, heading_level=article_heading_level, config=config, link_ctx=link_ctx
+                )
+            )
 
     if parsed.final_text or parsed.signature_lines:
         parts.append("## Final Provisions")
@@ -111,8 +118,34 @@ def generate_markdown(
     if parsed.annexes:
         parts.append("## Annexes")
         parts.append("")
+        has_grouping = any(
+            annex.chapter_id or annex.chapter_title or annex.section_id or annex.section_title
+            for annex in parsed.annexes
+        )
+        annex_heading_level = 4 if has_grouping else 3
+        current_chapter: tuple[str, str] = ("", "")
+        current_section: tuple[str, str] = ("", "")
+
         for annex in parsed.annexes:
-            parts.extend(_render_section(annex, heading_level=3, config=config, link_ctx=link_ctx))
+            chapter = (annex.chapter_id, annex.chapter_title)
+            section = (annex.section_id, annex.section_title)
+
+            if chapter != ("", "") and chapter != current_chapter:
+                parts.append(_render_group_heading(*chapter, label="Chapter", level=3))
+                parts.append("")
+                current_chapter = chapter
+                current_section = ("", "")
+
+            if section != ("", "") and section != current_section:
+                parts.append(_render_group_heading(*section, label="Section", level=4))
+                parts.append("")
+                current_section = section
+
+            parts.extend(
+                _render_section(
+                    annex, heading_level=annex_heading_level, config=config, link_ctx=link_ctx
+                )
+            )
 
     return "\n".join(parts).strip()
 
@@ -120,6 +153,7 @@ def generate_markdown(
 @dataclass
 class _LinkContext:
     """Carries known section IDs and heading labels through the render pipeline."""
+
     article_ids: set[str]
     annex_ids: set[str]
     heading_map: dict[str, str]  # section.id → full heading label
@@ -225,14 +259,20 @@ def _render_paragraphs(
             main_line += f" ^{block_id}"
 
         lines.append(main_line)
-        lines.extend(_render_paragraph_points(paragraph.points, block_id, config, link_ctx))
+        
+        point_indent = 3 if paragraph.number else 0
+        point_parent_id = block_id if paragraph.number else base_id
+        lines.extend(_render_paragraph_points(paragraph.points, point_parent_id, config, point_indent, link_ctx))
         if index + 1 < total:
             lines.append("")
     return lines
 
 
 def _render_paragraph_points(
-    points: list[Point], parent_id: str, config: RenderConfig,
+    points: list[Point],
+    parent_id: str,
+    config: RenderConfig,
+    indent: int,
     link_ctx: _LinkContext | None = None,
 ) -> list[str]:
     filtered = [point for point in points if point.text.strip()]
@@ -241,14 +281,22 @@ def _render_paragraph_points(
 
     lines: list[str] = []
     for index, point in enumerate(filtered):
-        marker_slug = re.sub(r'[^a-zA-Z0-9]', '', point.marker.lower()) if point.marker else f"pt{index}"
+        marker_slug = (
+            re.sub(r"[^a-zA-Z0-9]", "", point.marker.lower()) if point.marker else f"pt{index}"
+        )
         pt_id = f"{parent_id}-{marker_slug}"
-        lines.extend(_render_point_with_nested_dash_list(point, pt_id, config, indent=3, link_ctx=link_ctx))
+        lines.extend(
+            _render_point_with_nested_dash_list(point, pt_id, config, indent=indent, link_ctx=link_ctx)
+        )
     return lines
 
 
 def _render_point_with_nested_dash_list(
-    point: Point, block_id: str, config: RenderConfig, *, indent: int,
+    point: Point,
+    block_id: str,
+    config: RenderConfig,
+    *,
+    indent: int,
     link_ctx: _LinkContext | None = None,
 ) -> list[str]:
     lead_text, nested_items = _split_inline_dash_items(point.text)
@@ -263,26 +311,50 @@ def _render_point_with_nested_dash_list(
     lines = [main_line]
 
     if point.subpoints:
-        lines.extend(_render_point_subpoints(point.subpoints, block_id, config, indent=indent + 3, link_ctx=link_ctx))
+        lines.extend(
+            _render_point_subpoints(
+                point.subpoints, block_id, config, indent=indent + 3, link_ctx=link_ctx
+            )
+        )
 
-    lines.extend(_render_nested_dash_items(nested_items, block_id, config, indent=indent + 3, link_ctx=link_ctx))
+    lines.extend(
+        _render_nested_dash_items(
+            nested_items, block_id, config, indent=indent + 3, link_ctx=link_ctx
+        )
+    )
     return lines
 
 
 def _render_point_subpoints(
-    subpoints: list[Point], parent_id: str, config: RenderConfig, *, indent: int,
+    subpoints: list[Point],
+    parent_id: str,
+    config: RenderConfig,
+    *,
+    indent: int,
     link_ctx: _LinkContext | None = None,
 ) -> list[str]:
     lines: list[str] = []
     for index, subpoint in enumerate(subpoints):
-        marker_slug = re.sub(r'[^a-zA-Z0-9]', '', subpoint.marker.lower()) if subpoint.marker else f"spt{index}"
+        marker_slug = (
+            re.sub(r"[^a-zA-Z0-9]", "", subpoint.marker.lower())
+            if subpoint.marker
+            else f"spt{index}"
+        )
         spt_id = f"{parent_id}-{marker_slug}"
-        lines.extend(_render_point_with_nested_dash_list(subpoint, spt_id, config, indent=indent, link_ctx=link_ctx))
+        lines.extend(
+            _render_point_with_nested_dash_list(
+                subpoint, spt_id, config, indent=indent, link_ctx=link_ctx
+            )
+        )
     return lines
 
 
 def _render_nested_dash_items(
-    items: list[str], parent_id: str, config: RenderConfig, *, indent: int,
+    items: list[str],
+    parent_id: str,
+    config: RenderConfig,
+    *,
+    indent: int,
     link_ctx: _LinkContext | None = None,
 ) -> list[str]:
     lines: list[str] = []
@@ -304,7 +376,11 @@ def _render_nested_dash_items(
             child_indent = indent + 3
 
         if children:
-            lines.extend(_render_nested_dash_items(children, item_id, config, indent=child_indent, link_ctx=link_ctx))
+            lines.extend(
+                _render_nested_dash_items(
+                    children, item_id, config, indent=child_indent, link_ctx=link_ctx
+                )
+            )
 
     return lines
 
@@ -384,9 +460,7 @@ def _find_first_dash_marker(
     return markers[0] if markers else None
 
 
-def _find_dash_markers(
-    text: str, *, allowed_delimiters: set[str]
-) -> list[tuple[int, int, str]]:
+def _find_dash_markers(text: str, *, allowed_delimiters: set[str]) -> list[tuple[int, int, str]]:
     markers: list[tuple[int, int, str]] = []
     for match in re.finditer(r"[—-]\s+", text):
         delimiter = _dash_delimiter_before(text, match.start())
@@ -438,7 +512,7 @@ def _build_navigation(document: EurLexDocument, config: RenderConfig) -> list[st
     entries: list[str] = []
 
     for section in document.articles:
-            entries.append(_section_header(section))
+        entries.append(_section_header(section))
     for section in document.annexes:
         entries.append(_section_header(section))
 
@@ -456,45 +530,77 @@ def _build_navigation(document: EurLexDocument, config: RenderConfig) -> list[st
 # Semantic link resolution
 # ---------------------------------------------------------------------------
 
-# Matches "Article 5a", "Articles 5c(4) and 5e(2)", "Article 3 paragraph 5, point (a)"
-# but NOT when followed by "of Regulation", "of Directive", etc.
-_EXTERNAL_DOC_SUFFIX = r"(?:\s+of\s+(?:Regulation|Directive|Decision|Delegated|Implementing|Commission|Council|European)\b)"
+# Matches text after a reference that indicates an external document.
+# Handles:
+#   " of Regulation..." / " of Directive..." / " of Decision..."
+#   ", of Directive..." (comma before "of")
+#   " of the Commission..." / " of the Council..." (optional article "the")
+#   " of that Directive..." / " of that Regulation..." (demonstrative "that")
+#   " to Implementing Regulation..." (annex-style external refs)
+_EXTERNAL_DOC_SUFFIX = (
+    r"(?:[,\s]+of\s+(?:the\s+|that\s+)?"
+    r"(?:Regulation|Directive|Decision|Delegated|Implementing|Commission|Council|European)\b)"
+    r"|(?:\s+to\s+(?:the\s+|that\s+)?"
+    r"(?:Regulation|Directive|Decision|Delegated|Implementing|Commission|Council|European)\b)"
+)
 
 # Pattern for a single article-like reference with optional inline qualifiers.
 # Captures:
 #   group "base"  – e.g. "Article 5a"
-#   group "qual"  – e.g. "(4)" or "(1)(a)" or " paragraph 5, point (a)"
+#   group "qual"  – e.g. "(4)" or "(1)(a)" or " paragraph 5, point (a)" or "(3), point (b)"
+#
+# Negative lookbehind (?<!s) prevents matching "Article 5" inside "Articles 5".
+# Negative lookahead (?! … to \d) skips range constructs like "Articles 5 to 14".
 _ARTICLE_REF = (
-    r"(?P<base>Article\s+\d+[a-zA-Z]?)"
+    r"(?<!s)(?P<base>Article\s+\d+[a-zA-Z]?)"
     r"(?P<qual>"
     r"(?:\s+paragraph\s+\d+(?:,?\s+point\s+\(?[a-zA-Z0-9]+\)?)?)"  # paragraph N, point (x) style
-    r"|(?:\(\s*[a-zA-Z0-9]+\s*\))+"                          # (1)(a) style
+    r"|(?:\(\s*[a-zA-Z0-9]+\s*\))+(?:,?\s+point\s+\(?[a-zA-Z0-9]+\s*\)?)"  # (1)(a), point (b) style
+    r"|(?:\(\s*[a-zA-Z0-9]+\s*\))+"  # (1)(a) style
+    r"|(?:\s+point\s+\(?[a-zA-Z0-9]+\s*\)?)"  # point (1) style (standalone, no paragraph)
+    r"|(?:,\s*point\s+\(?[a-zA-Z0-9]+\s*\)?)"  # , point (46) style (comma before point)
     r")?"
+    r"(?!\s+to\s+\d)"  # skip "Article 5 to 14" range references
 )
 
-# Pattern for compound "Articles X and Y" references.
+# Pattern for compound "Articles X, Y, Z and W" references.
+# Must be applied BEFORE _ARTICLE_REF so the longer match wins.
+# Handles:
+#   "Articles 5c(4) and 5e(2)" – two articles with qualifiers
+#   "Articles 7, 9, 10, 12 and 12a" – comma-separated list
+#   "Articles 5c(4)" – single article under "Articles" heading
+# Negative lookahead skips range constructs like "Articles 5 to 14".
 _ARTICLES_COMPOUND = (
     r"Articles\s+"
-    r"(?P<first>\d+[a-zA-Z]?(?:(?:\(\s*[a-zA-Z0-9]+\s*\))+)?)"
-    r"(?:\s+and\s+"
-    r"(?P<second>\d+[a-zA-Z]?(?:(?:\(\s*[a-zA-Z0-9]+\s*\))+)?)"
-    r")?"
+    r"(?P<items>"
+    r"\d+[a-zA-Z]?(?:\(\s*[a-zA-Z0-9]+\s*\))*"  # first article number + optional qualifiers
+    r"(?:"
+    r",\s*\d+[a-zA-Z]?(?:\(\s*[a-zA-Z0-9]+\s*\))*"  # comma-separated: , 9, , 10
+    r")*"
+    r"(?:\s+and\s+\d+[a-zA-Z]?(?:\(\s*[a-zA-Z0-9]+\s*\))*)?"  # optional final: and 12a
+    r")"
+    r"(?!\s+to\s+\d)"  # skip range: "Articles 5 to 14"
 )
 
 # Pattern for annex references with optional ", point N"
 _ANNEX_REF = (
     r"(?P<annex_base>(?:ANNEX|Annex)\s+[IVXLCDM]+(?:\s+[A-Z])?)"
     r"(?P<annex_qual>"
-    r"(?:,?\s+point\s+\(?\s*[a-zA-Z0-9]+\s*\)?)"     # , point (1) or , point 1
-    r"|(?:(?:\(\s*[a-zA-Z0-9]+\s*\))+)"                # (1)(a) style
+    r"(?:,?\s+point\s+\(?\s*[a-zA-Z0-9]+\s*\)?)"  # , point (1) or , point 1
+    r"|(?:(?:\(\s*[a-zA-Z0-9]+\s*\))+)"  # (1)(a) style
     r")?"
 )
 
 
 def _is_external_reference(source: str, match_end: int) -> bool:
-    """Check if text after the match indicates an external document reference."""
+    """Check if text after the match indicates an external document reference.
+
+    Searches the remainder for external doc patterns anywhere (not just at the
+    start), so constructs like ``Article 4, point (1), of Regulation`` are
+    correctly identified as external.
+    """
     remainder = source[match_end:]
-    return bool(re.match(_EXTERNAL_DOC_SUFFIX, remainder))
+    return bool(re.search(_EXTERNAL_DOC_SUFFIX, remainder))
 
 
 def _build_case_insensitive_id_set(
@@ -574,10 +680,17 @@ def _resolve_semantic_references(
 
 
 def _replace_compound_articles(
-    match: re.Match[str], known_ids: set[str], config: RenderConfig,
+    match: re.Match[str],
+    known_ids: set[str],
+    config: RenderConfig,
     heading_map: dict[str, str] | None = None,
 ) -> str:
-    """Replace 'Articles 5c(4) and 5e(2)' with two individual links."""
+    """Replace 'Articles 5c(4) and 5e(2)' or 'Articles 7, 9, 10 and 12a' with
+    individual links.
+
+    Skips range constructs like 'Articles 5 to 14' — those are not converted.
+    Skips external references like 'Articles 1 to 5 of Regulation...'.
+    """
     full = match.group(0)
     start = match.start()
     source = match.string
@@ -586,14 +699,32 @@ def _replace_compound_articles(
     if _is_external_reference(source, match.end()):
         return full
 
-    first_raw = match.group("first")
-    second_raw = match.group("second")
+    # Skip range constructs: "Articles 5 to 14"
+    remainder = source[match.end():]
+    if re.match(r"\s+to\s+\d", remainder):
+        return full
 
-    first_link = _linkify_article_token(first_raw, known_ids, config, heading_map)
-    if second_raw:
-        second_link = _linkify_article_token(second_raw, known_ids, config, heading_map)
-        return f"Articles {first_link} and {second_link}"
-    return f"Articles {first_link}"
+    items_raw = match.group("items")
+    # Split by comma and/or "and" to get individual article tokens
+    tokens = re.split(r",\s*|\s+and\s+", items_raw)
+
+    linked: list[str] = []
+    for token in tokens:
+        token = token.strip()
+        if not token:
+            continue
+        link = _linkify_article_token(token, known_ids, config, heading_map)
+        linked.append(link)
+
+    if not linked:
+        return full
+
+    # Reconstruct: "Articles" + linked tokens joined with ", " and " and "
+    if len(linked) == 1:
+        return f"Articles {linked[0]}"
+    if len(linked) == 2:
+        return f"Articles {linked[0]} and {linked[1]}"
+    return f"Articles {', '.join(linked[:-1])} and {linked[-1]}"
 
 
 def _replace_single_article(
@@ -615,6 +746,9 @@ def _replace_single_article(
     before = source[prefix_start:start]
     if re.search(r"Articles\s*$", before):
         return full
+    # Skip if already inside a wikilink or markdown link (e.g. [[#Article 1 - Subject|1]]).
+    if "[[" in before or "](" in before:
+        return full
 
     base = match.group("base")  # "Article 5a"
     qual = match.group("qual") or ""
@@ -634,7 +768,9 @@ def _replace_single_article(
 
 
 def _replace_annex_ref(
-    match: re.Match[str], known_ids: set[str], config: RenderConfig,
+    match: re.Match[str],
+    known_ids: set[str],
+    config: RenderConfig,
     heading_map: dict[str, str] | None = None,
 ) -> str:
     """Replace 'Annex IV' or 'Annex IV, point 1' with a link."""
@@ -664,7 +800,9 @@ def _replace_annex_ref(
 
 
 def _linkify_article_token(
-    token: str, known_ids: set[str], config: RenderConfig,
+    token: str,
+    known_ids: set[str],
+    config: RenderConfig,
     heading_map: dict[str, str] | None = None,
 ) -> str:
     """Turn a bare token like '5c(4)' into a linked fragment."""
@@ -690,11 +828,9 @@ def _linkify_article_token(
     return _format_link(token, target, config.links_style)
 
 
-
-
 def _slugify(text: str) -> str:
     """Convert a section ID like 'Article 5a' into 'article-5a'."""
-    return re.sub(r'[\s]+', '-', text.strip().lower())
+    return re.sub(r"[\s]+", "-", text.strip().lower())
 
 
 def _extract_qualifier_parts(qual: str) -> list[str]:
@@ -704,6 +840,7 @@ def _extract_qualifier_parts(qual: str) -> list[str]:
 
         "(1)(a)"             → ["1", "a"]
         " paragraph 5, point (a)" → ["5", "a"]
+        "(3), point (b)"     → ["3", "b"]
         ", point 1"          → ["1"]
         ", point (a)"        → ["a"]
     """
@@ -713,6 +850,17 @@ def _extract_qualifier_parts(qual: str) -> list[str]:
     has_keywords = "paragraph" in qual or "point" in qual
 
     if has_keywords:
+        # First, extract any parenthesized items BEFORE the first keyword
+        # e.g. "(3), point (b)" → extract "3" from the leading "(3)"
+        kw_pos = len(qual)
+        for kw in ("paragraph", "point"):
+            pos = qual.find(kw)
+            if pos >= 0 and pos < kw_pos:
+                kw_pos = pos
+        prefix = qual[:kw_pos]
+        prefix_parens = re.findall(r"\(\s*([a-zA-Z0-9]+)\s*\)", prefix)
+        parts.extend(p.lower() for p in prefix_parens)
+
         # Extract "paragraph N" style
         para_match = re.search(r"paragraph\s+(\d+)", qual)
         if para_match:
@@ -748,14 +896,18 @@ def _format_link(label: str, target: str, style: str) -> str:
 
 
 def _apply_intra_links(
-    text: str, link_ctx: _LinkContext,
+    text: str,
+    link_ctx: _LinkContext,
 ) -> str:
     config = link_ctx.config
     result = text
 
     if config.resolve_semantic_links:
         result = _resolve_semantic_references(
-            result, link_ctx.article_ids, link_ctx.annex_ids, config,
+            result,
+            link_ctx.article_ids,
+            link_ctx.annex_ids,
+            config,
             heading_map=link_ctx.heading_map,
         )
     else:

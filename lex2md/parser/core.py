@@ -13,7 +13,7 @@ from lex2md.models import (
     document_to_dict,
 )
 
-POINT_MARKER_TOKEN = r"(?:\d+[a-zA-Z]?|[a-z]|[A-Z]|[ivxlcdm]{1,6}|[IVXLCDM]{1,6})"
+POINT_MARKER_TOKEN = r"(?:\d+[a-zA-Z]?|[a-z]{1,3}|[A-Z]{1,3}|[ivxlcdm]{1,6}|[IVXLCDM]{1,6})"
 from lex2md.parser.points import _extract_article_paragraphs
 from lex2md.parser.tables import _extract_markdown_table
 from lex2md.parser.text import (
@@ -33,6 +33,17 @@ def parse_document_html(
     html_content: str, *, celex: str = "", language: str = "en"
 ) -> EurLexDocument:
     soup = BeautifulSoup(html_content, "html.parser")
+
+    # Remove consolidated document metadata tags by class
+    for tag in soup.find_all(class_="modref"):
+        tag.decompose()
+
+    # Remove inline consolidated markers (e.g. ►M2, ▼B, ◄)
+    mod_pattern = re.compile(r"^[▼►]\s*[A-Z]\d*$|^◄$")
+    for tag in soup.find_all(["span", "a", "p"]):
+        text = tag.get_text(strip=True)
+        if text and mod_pattern.match(text):
+            tag.decompose()
 
     preamble_text, preamble_notes = _extract_preamble(soup)
     preamble_intro, preamble_recitals = _split_preamble_intro_and_recitals(

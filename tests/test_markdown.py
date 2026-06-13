@@ -239,7 +239,7 @@ def test_generate_markdown_does_not_number_unnumbered_paragraphs() -> None:
     assert "Second unnumbered paragraph." in result
     assert "1. First unnumbered paragraph." not in result
     assert "1. Second unnumbered paragraph." not in result
-    assert "   - (a) detail one" in result
+    assert "- (a) detail one" in result
 
 
 def test_generate_markdown_dash_enumeration_uses_native_sublist_marker() -> None:
