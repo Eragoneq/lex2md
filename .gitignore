@@ -4,6 +4,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-output*.md
-session-*.md
+*.md
+!README.md
 out.json
